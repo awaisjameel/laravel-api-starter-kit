@@ -99,19 +99,21 @@ curl -X POST http://localhost:8080/api/v1/register \
 ```
 
 **Response:**
+
 ```json
 {
-  "success": true,
-  "message": "User registered successfully",
-  "data": {
-    "user": {
-      "id": 1,
-      "name": "John Doe",
-      "email": "john@example.com",
-      "created_at": "2025-01-15T10:30:00+00:00"
-    },
-    "token": "1|abc123..."
-  }
+    "success": true,
+    "message": "User registered successfully",
+    "data": {
+        "user": {
+            "id": 1,
+            "name": "John Doe",
+            "role": 0,
+            "email": "john@example.com",
+            "created_at": "2025-01-15T10:30:00+00:00"
+        },
+        "token": "1|abc123..."
+    }
 }
 ```
 
@@ -149,12 +151,12 @@ curl -X POST http://localhost:8080/api/v1/logout \
 
 ### Version 1 (`/api/v1`)
 
-| Method | Endpoint    | Auth | Description              | Rate Limit |
-|--------|-------------|------|--------------------------|------------|
-| POST   | /register   | No   | Register new user        | 5/min      |
-| POST   | /login      | No   | Get authentication token | 5/min      |
-| POST   | /logout     | Yes  | Revoke current token     | 60/min     |
-| GET    | /me         | Yes  | Get current user profile | 60/min     |
+| Method | Endpoint  | Auth | Description              | Rate Limit |
+| ------ | --------- | ---- | ------------------------ | ---------- |
+| POST   | /register | No   | Register new user        | 5/min      |
+| POST   | /login    | No   | Get authentication token | 5/min      |
+| POST   | /logout   | Yes  | Revoke current token     | 60/min     |
+| GET    | /me       | Yes  | Get current user profile | 60/min     |
 
 ## Response Format
 
@@ -164,11 +166,11 @@ All API responses follow a consistent format:
 
 ```json
 {
-  "success": true,
-  "message": "Operation successful",
-  "data": {
-    // Response data here
-  }
+    "success": true,
+    "message": "Operation successful",
+    "data": {
+        // Response data here
+    }
 }
 ```
 
@@ -176,28 +178,28 @@ All API responses follow a consistent format:
 
 ```json
 {
-  "success": false,
-  "message": "Error description",
-  "errors": {
-    "field": ["Validation error message"]
-  }
+    "success": false,
+    "message": "Error description",
+    "errors": {
+        "field": ["Validation error message"]
+    }
 }
 ```
 
 ### HTTP Status Codes
 
-| Code | Description |
-|------|-------------|
-| 200  | Success |
-| 201  | Resource created |
-| 204  | No content |
-| 400  | Bad request |
-| 401  | Unauthorized |
-| 403  | Forbidden |
-| 404  | Not found |
-| 422  | Validation error |
+| Code | Description       |
+| ---- | ----------------- |
+| 200  | Success           |
+| 201  | Resource created  |
+| 204  | No content        |
+| 400  | Bad request       |
+| 401  | Unauthorized      |
+| 403  | Forbidden         |
+| 404  | Not found         |
+| 422  | Validation error  |
 | 429  | Too many requests |
-| 500  | Server error |
+| 500  | Server error      |
 
 ## Project Structure
 
@@ -319,6 +321,7 @@ return UserResource::collection($users);
 ```
 
 **Request examples:**
+
 ```
 GET /api/v1/users?filter[name]=john
 GET /api/v1/users?sort=-created_at
@@ -355,11 +358,11 @@ public function store(UserData $data): JsonResponse
 
 Configured in `app/Providers/AppServiceProvider.php`:
 
-| Limiter | Limit | Use Case |
-|---------|-------|----------|
-| `api` | 60/min | Default for all API routes |
-| `auth` | 5/min | Login/register (brute force protection) |
-| `authenticated` | 120/min | Logged-in users |
+| Limiter         | Limit   | Use Case                                |
+| --------------- | ------- | --------------------------------------- |
+| `api`           | 60/min  | Default for all API routes              |
+| `auth`          | 5/min   | Login/register (brute force protection) |
+| `authenticated` | 120/min | Logged-in users                         |
 
 ### Applying Rate Limiters
 
@@ -442,11 +445,11 @@ This kit includes strict code quality tools configured following [nunomaduro/lar
 
 ### Tools
 
-| Tool | Purpose | Config |
-|------|---------|--------|
+| Tool                                                                               | Purpose                     | Config         |
+| ---------------------------------------------------------------------------------- | --------------------------- | -------------- |
 | [PHPStan](https://phpstan.org/) + [Larastan](https://github.com/larastan/larastan) | Static analysis (level max) | `phpstan.neon` |
-| [Rector](https://getrector.com/) | Automated refactoring | `rector.php` |
-| [Pint](https://laravel.com/docs/pint) | Code style (strict rules) | `pint.json` |
+| [Rector](https://getrector.com/)                                                   | Automated refactoring       | `rector.php`   |
+| [Pint](https://laravel.com/docs/pint)                                              | Code style (strict rules)   | `pint.json`    |
 
 ### Composer Scripts
 
@@ -574,11 +577,13 @@ COPY docker/php/php.ini /usr/local/etc/php/conf.d/
 ### Adding a New Resource (CRUD Example)
 
 1. **Create Model & Migration:**
+
 ```bash
 docker compose run --rm app php artisan make:model Post -m
 ```
 
 2. **Create Controller:**
+
 ```php
 // app/Http/Controllers/Api/V1/PostController.php
 namespace App\Http\Controllers\Api\V1;
@@ -611,6 +616,7 @@ class PostController extends ApiController
 ```
 
 3. **Create Resource:**
+
 ```php
 // app/Http/Resources/PostResource.php
 namespace App\Http\Resources;
@@ -633,6 +639,7 @@ class PostResource extends JsonResource
 ```
 
 4. **Add Routes:**
+
 ```php
 // routes/api/v1.php
 Route::middleware('auth:sanctum')->group(function () {
@@ -642,6 +649,7 @@ Route::middleware('auth:sanctum')->group(function () {
 ```
 
 5. **Create Tests:**
+
 ```php
 // tests/Feature/Api/V1/PostTest.php
 uses(RefreshDatabase::class);

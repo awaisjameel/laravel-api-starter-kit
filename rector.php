@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 use Rector\Caching\ValueObject\Storage\FileCacheStorage;
 use Rector\Config\RectorConfig;
+use Rector\Php81\Rector\Class_\SpatieEnumClassToEnumRector;
+use Rector\Php81\Rector\MethodCall\SpatieEnumMethodCallToEnumConstRector;
 use Rector\Php83\Rector\ClassMethod\AddOverrideAttributeToOverriddenMethodsRector;
 use RectorLaravel\Set\LaravelSetList;
 use RectorLaravel\Set\LaravelSetProvider;
@@ -40,6 +42,8 @@ return RectorConfig::configure()
         __DIR__.'/tests',
     ])
     ->withSkip([
+        SpatieEnumClassToEnumRector::class,
+        SpatieEnumMethodCallToEnumConstRector::class,
         AddOverrideAttributeToOverriddenMethodsRector::class,
         __DIR__.'/config/database.php',
     ])

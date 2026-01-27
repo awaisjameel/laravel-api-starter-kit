@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Features
 
 - integrate PHPStan, Rector and Pint code quality tools (#13) ([f417ec2](https://github.com/Grazulex/laravel-api-kit/commit/f417ec23c2eada4eaddf3ec9e4cff7ccc71a3572))
+
 ## [2.0.2](https://github.com/Grazulex/laravel-api-kit/releases/tag/v2.0.2) (2026-01-08)
 
 ### Bug Fixes
@@ -16,11 +17,13 @@ All notable changes to this project will be documented in this file.
 ### Chores
 
 - update dependencies and fix apiroute config (#10) ([2b0f6ce](https://github.com/Grazulex/laravel-api-kit/commit/2b0f6cedaa2e7804d0a2a30c0d8c8d0dc27c2f57))
+
 ## [1.1.0](https://github.com/Grazulex/laravel-api-kit/releases/tag/v1.1.0) (2025-12-25)
 
 ### Chores
 
 - **deps:** update laravel-apiroute to ^1.0 ([02c55f7](https://github.com/Grazulex/laravel-api-kit/commit/02c55f765f103852258398d7d0d0790146a33f10))
+
 ## [1.0.0](https://github.com/Grazulex/laravel-api-kit/releases/tag/v1.0.0) (2025-12-25)
 
 ### Features

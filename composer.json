@@ -1,9 +1,15 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "grazulex/laravel-api-kit",
+    "name": "awaisjameel/laravel-api-kit",
     "type": "project",
     "description": "Laravel REST API starter kit with Sanctum, Spatie packages, Scramble docs, and Pest testing.",
-    "keywords": ["laravel", "api", "rest", "starter-kit", "sanctum"],
+    "keywords": [
+        "laravel",
+        "api",
+        "rest",
+        "starter-kit",
+        "sanctum"
+    ],
     "license": "MIT",
     "require": {
         "php": "^8.3",
@@ -13,7 +19,9 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
         "spatie/laravel-data": "^4.0",
-        "spatie/laravel-query-builder": "^6.0"
+        "spatie/laravel-enum": "^3.2",
+        "spatie/laravel-query-builder": "^6.0",
+        "spatie/laravel-typescript-transformer": "^2.5"
     },
     "require-dev": {
         "driftingly/rector-laravel": "^2.0",
@@ -74,6 +82,20 @@
             "@php artisan key:generate --ansi",
             "@php -r \"file_exists('database/database.sqlite') || touch('database/database.sqlite');\"",
             "@php artisan migrate --graceful --ansi"
+        ],
+        "cleanup": [
+            "@php vendor/bin/pint --parallel",
+            "@php vendor/bin/rector process",
+            "npx prettier -w ./"
+        ],
+        "generate": [
+            "@php artisan typescript:transform"
+        ],
+        "generate-and-cleanup": [
+            "@php artisan typescript:transform",
+            "npx prettier -w ./",
+            "@php vendor/bin/pint --parallel",
+            "@php vendor/bin/rector process"
         ]
     },
     "extra": {

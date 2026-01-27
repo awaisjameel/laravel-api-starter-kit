@@ -6,6 +6,8 @@ use Illuminate\Support\Str;
 
 return [
 
+    'seed_users' => env('DB_SEED_USERS', false),
+
     /*
     |--------------------------------------------------------------------------
     | Default Database Connection Name
