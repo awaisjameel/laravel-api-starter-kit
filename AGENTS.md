@@ -22,6 +22,7 @@ These instructions are mandatory for any agent working in this repository. They 
 3. Controllers must stay thin: validate/transform input -> call action/service -> return Resource via `ApiResponse`.
 4. This is API-only. Do not add Blade, Vite, or frontend assets.
 5. Never edit `vendor/` or `storage/` contents.
+6. Never add unnecessary comments unless they explain "why" something is done a certain way.
 
 ## Scope and definition of done
 
@@ -137,9 +138,8 @@ These instructions are mandatory for any agent working in this repository. They 
 
 ## Quality gates (do before shipping changes)
 
-- `composer test` (runs Pint, Rector, PHPStan, and tests).
-- `composer lint` for auto-fixes.
-- Keep PHPStan at max level and Pint rules satisfied.
+- `composer cleanup` (runs Pint, Rector, PHPStan, and tests).
+- `composer generate-and-cleanup` for auto-fixes.
 - Prefer composer scripts for tooling; do not invent ad-hoc command names in docs/CI.
 - No style drift: touched files must remain formatter-compliant; refactors must preserve behavior while improving type safety.
 
@@ -181,8 +181,7 @@ app/Services/API/{ServiceName}/
 
 ## Testing expectations
 
-- Add Pest tests for new endpoints (success + error cases: 401/403/422/404).
-- Use `RefreshDatabase` in API tests.
+- no tests need to be written
 
 ## Inspect before modify
 
