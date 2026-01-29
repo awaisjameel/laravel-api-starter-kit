@@ -2,6 +2,14 @@
 
 declare(strict_types=1);
 
+use App\TypeScript\Collectors\ApiResponseCollector;
+use App\TypeScript\Collectors\FormRequestCollector;
+use App\TypeScript\Collectors\ResourceCollectionCollector;
+use App\TypeScript\Collectors\ResourceCollector;
+use App\TypeScript\Transformers\ApiResponseTransformer;
+use App\TypeScript\Transformers\FormRequestTransformer;
+use App\TypeScript\Transformers\JsonResourceTransformer;
+use App\TypeScript\Transformers\ResourceCollectionTransformer;
 use App\TypeScript\Transformers\SpatieEnumTransformer;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
@@ -32,6 +40,10 @@ return [
      */
 
     'collectors' => [
+        FormRequestCollector::class,
+        ApiResponseCollector::class,
+        ResourceCollector::class,
+        ResourceCollectionCollector::class,
         DefaultCollector::class,
         EnumCollector::class,
     ],
@@ -42,9 +54,13 @@ return [
      */
 
     'transformers' => [
+        ApiResponseTransformer::class,
         SpatieStateTransformer::class,
         EnumTransformer::class,
         SpatieEnumTransformer::class,
+        FormRequestTransformer::class,
+        JsonResourceTransformer::class,
+        ResourceCollectionTransformer::class,
         DtoTransformer::class,
     ],
 
