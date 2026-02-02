@@ -15,7 +15,7 @@ final class EnsureAdmin
     {
         $user = $request->user();
 
-        if ($user === null || ! method_exists($user, 'role') || ! $user->role->equals(UserRole::Admin())) {
+        if ($user === null || !$user->role->equals(UserRole::Admin())) {
             return response()->json([
                 'success' => false,
                 'message' => 'Forbidden',
