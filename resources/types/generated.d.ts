@@ -9,18 +9,19 @@ export type RegisterRequest = {
     name: string;
     email: string;
     password: string;
+    password_confirmation: string;
 };
 export type StoreUserRequest = {
     name: string;
     email: string;
-    role: any;
+    role: UserRole;
     password: string;
-    password_confirmation?: string;
+    password_confirmation: string;
 };
 export type UpdateUserRequest = {
-    name?: string | null;
-    email?: string | null;
-    role?: any | null;
+    name?: string;
+    email?: string;
+    role?: UserRole;
     password?: string | null;
     password_confirmation?: string | null;
 };
@@ -61,11 +62,11 @@ export type UserResource = {
     role: UserRole;
     email: string;
     email_verified_at: string | null;
-    created_at: string;
-    updated_at: string;
+    created_at: string | null;
+    updated_at: string | null;
 };
 export type UserResourceResponse = ApiResponse<UserResource>;
 export enum UserRole {
-    Admin = "0",
-    User = "1",
+    Admin = 0,
+    User = 1,
 }

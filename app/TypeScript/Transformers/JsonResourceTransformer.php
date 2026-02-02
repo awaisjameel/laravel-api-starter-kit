@@ -64,25 +64,9 @@ final readonly class JsonResourceTransformer implements Transformer
 
         $props = [];
         foreach ($entries as $key => $expr) {
-            $type = $dtoPropertyTypes[$key] ?? null;
-
+            $type = $this->inferExpressionType($expr);
             if ($type === null) {
-                // Nested resource/collection heuristics first
-                $nestedTs = $this->detectNestedResourceTs($expr);
-                if ($nestedTs !== null) {
-                    $type = $nestedTs;
-                } elseif (str_contains($expr, 'toIso8601String()')) {
-                    // Heuristics for common patterns in resources
-                    $type = str_contains($expr, '?->') ? 'string | null' : 'string';
-                } elseif (preg_match('/\?->/', $expr) === 1) {
-                    $type = 'unknown | null';
-                } elseif (preg_match('/^\s*(true|false)\s*$/i', $expr) === 1) {
-                    $type = 'boolean';
-                } elseif (preg_match('/^\s*[-]?\d+(?:\.\d+)?\s*$/', $expr) === 1) {
-                    $type = 'number';
-                } elseif (preg_match('/^\s*\'([^\']*)\'\s*$/', $expr) === 1 || preg_match('/^\s*\"([^\"]*)\"\s*$/', $expr) === 1) {
-                    $type = 'string';
-                }
+                $type = $dtoPropertyTypes[$key] ?? null;
             }
 
             $isOptional = str_contains($expr, 'whenLoaded(') || preg_match('/\bwhen\s*\(/', $expr) === 1;
@@ -108,99 +92,128 @@ final readonly class JsonResourceTransformer implements Transformer
         );
     }
 
+    private function inferExpressionType(string $expr): ?string
+    {
+        // Nested resource/collection heuristics first
+        $nestedTs = $this->detectNestedResourceTs($expr);
+        if ($nestedTs !== null) {
+            return $nestedTs;
+        }
+
+        if (str_contains($expr, 'toIso8601String()')) {
+            // Heuristics for common patterns in resources
+            return str_contains($expr, '?->') ? 'string | null' : 'string';
+        }
+
+        if (preg_match('/\?->/', $expr) === 1) {
+            return 'unknown | null';
+        }
+
+        if (preg_match('/^\s*(true|false)\s*$/i', $expr) === 1) {
+            return 'boolean';
+        }
+
+        if (preg_match('/^\s*[-]?\d+(?:\.\d+)?\s*$/', $expr) === 1) {
+            return 'number';
+        }
+
+        if (preg_match('/^\s*\'([^\']*)\'\s*$/', $expr) === 1 || preg_match('/^\s*\"([^\"]*)\"\s*$/', $expr) === 1) {
+            return 'string';
+        }
+
+        return null;
+    }
+
     private function detectNestedResourceTs(string $expr): ?string
     {
-        // map(fn (...) => new SomeResource(...)) => Array<SomeResource>
-        if (preg_match('/->map\s*\((?:fn|function)\s*\([^)]*\)\s*=>\s*new\s+([A-Za-z_\\][A-Za-z0-9_\\]*)/s', $expr, $m) === 1) {
-            $short = $this->shortClass($m[1]);
-            if (str_ends_with($short, 'Resource')) {
-                return sprintf('Array<%s>', $short);
+        $mapped = $this->detectMappedResourceTs($expr);
+        if ($mapped !== null) {
+            return $mapped;
+        }
+
+        $factory = $this->detectResourceFactoryTs($expr);
+        if ($factory !== null) {
+            return $factory;
+        }
+
+        // map->relation shorthand without explicit resource creation => Array<unknown>
+        if (preg_match('/->map->\s*[A-Za-z_]\w*\s*\(/', $expr) === 1) {
+            return 'Array<unknown>';
+        }
+
+        return null;
+    }
+
+    private function detectMappedResourceTs(string $expr): ?string
+    {
+        $patterns = [
+            ['method' => 'map', 'flatMap' => false],
+            ['method' => 'transform', 'flatMap' => false],
+            ['method' => 'flatMap', 'flatMap' => true],
+            ['method' => 'pluck\\s*\\([^)]*\\)\\s*->map', 'flatMap' => false],
+        ];
+
+        foreach ($patterns as $pattern) {
+            $type = $this->detectCallbackResourceTs($expr, $pattern['method'], $pattern['flatMap']);
+            if ($type !== null) {
+                return $type;
             }
         }
 
-        // map(fn (...) => SomeResource::make(...)) => Array<SomeResource>
-        if (preg_match('/->map\s*\((?:fn|function)\s*\([^)]*\)\s*=>\s*([A-Za-z_\\][A-Za-z0-9_\\]*)::make\s*\(/s', $expr, $m) === 1) {
-            $short = $this->shortClass($m[1]);
-            if (str_ends_with($short, 'Resource')) {
-                return sprintf('Array<%s>', $short);
+        return null;
+    }
+
+    private function detectCallbackResourceTs(string $expr, string $methodPattern, bool $flatMap): ?string
+    {
+        $method = '->'.$methodPattern;
+
+        $newPattern = '/'.$method.'\s*\((?:fn|function)\s*\([^)]*\)\s*=>\s*new\s+([A-Za-z_\\\\][A-Za-z0-9_\\\\]*)/s';
+        if (preg_match($newPattern, $expr, $m) === 1) {
+            $inner = $this->resolveResourceFactoryType($m[1], false);
+            if ($inner !== null) {
+                return $this->wrapMappedType($inner, $flatMap);
             }
         }
 
-        // pluck(...)->map(fn => new SomeResource(...)) => Array<SomeResource>
-        if (preg_match('/->pluck\s*\([^)]*\)\s*->map\s*\((?:fn|function)\s*\([^)]*\)\s*=>\s*new\s+([A-Za-z_\\][A-Za-z0-9_\\]*)/s', $expr, $m) === 1) {
-            $short = $this->shortClass($m[1]);
-            if (str_ends_with($short, 'Resource')) {
-                return sprintf('Array<%s>', $short);
+        $makePattern = '/'.$method.'\s*\((?:fn|function)\s*\([^)]*\)\s*=>\s*([A-Za-z_\\\\][A-Za-z0-9_\\\\]*)::make\s*\(/s';
+        if (preg_match($makePattern, $expr, $m) === 1) {
+            $inner = $this->resolveResourceFactoryType($m[1], false);
+            if ($inner !== null) {
+                return $this->wrapMappedType($inner, $flatMap);
             }
         }
 
-        // pluck(...)->map(fn => SomeResource::make(...)) => Array<SomeResource>
-        if (preg_match('/->pluck\s*\([^)]*\)\s*->map\s*\((?:fn|function)\s*\([^)]*\)\s*=>\s*([A-Za-z_\\][A-Za-z0-9_\\]*)::make\s*\(/s', $expr, $m) === 1) {
-            $short = $this->shortClass($m[1]);
-            if (str_ends_with($short, 'Resource')) {
-                return sprintf('Array<%s>', $short);
+        $collectionPattern = '/'.$method.'\s*\((?:fn|function)\s*\([^)]*\)\s*=>\s*([A-Za-z_\\\\][A-Za-z0-9_\\\\]*)::collection\s*\(/s';
+        if (preg_match($collectionPattern, $expr, $m) === 1) {
+            $inner = $this->resolveResourceFactoryType($m[1], true);
+            if ($inner !== null) {
+                return $this->wrapMappedType($inner, $flatMap);
             }
         }
 
-        // transform(fn (...) => new SomeResource(...)) => Array<SomeResource>
-        if (preg_match('/->transform\s*\((?:fn|function)\s*\([^)]*\)\s*=>\s*new\s+([A-Za-z_\\][A-Za-z0-9_\\]*)/s', $expr, $m) === 1) {
-            $short = $this->shortClass($m[1]);
-            if (str_ends_with($short, 'Resource')) {
-                return sprintf('Array<%s>', $short);
+        return null;
+    }
+
+    private function detectResourceFactoryTs(string $expr): ?string
+    {
+        if (preg_match('/([A-Za-z_\\\\][A-Za-z0-9_\\\\]*)::collection\s*\(/', $expr, $m) === 1) {
+            $type = $this->resolveResourceFactoryType($m[1], true);
+            if ($type !== null) {
+                return $type;
             }
         }
 
-        // transform(fn (...) => SomeResource::make(...)) => Array<SomeResource>
-        if (preg_match('/->transform\s*\((?:fn|function)\s*\([^)]*\)\s*=>\s*([A-Za-z_\\][A-Za-z0-9_\\]*)::make\s*\(/s', $expr, $m) === 1) {
-            $short = $this->shortClass($m[1]);
-            if (str_ends_with($short, 'Resource')) {
-                return sprintf('Array<%s>', $short);
+        if (preg_match('/([A-Za-z_\\\\][A-Za-z0-9_\\\\]*)::make\s*\(/', $expr, $m) === 1) {
+            $type = $this->resolveResourceFactoryType($m[1], false);
+            if ($type !== null) {
+                return $type;
             }
         }
 
-        // flatMap(fn (...) => new SomeResource(...)) => Array<SomeResource>
-        if (preg_match('/->flatMap\s*\((?:fn|function)\s*\([^)]*\)\s*=>\s*new\s+([A-Za-z_\\][A-Za-z0-9_\\]*)/s', $expr, $m) === 1) {
-            $short = $this->shortClass($m[1]);
-            if (str_ends_with($short, 'Resource')) {
-                return sprintf('Array<%s>', $short);
-            }
-        }
-
-        // flatMap(fn (...) => SomeResource::make(...)) => Array<SomeResource>
-        if (preg_match('/->flatMap\s*\((?:fn|function)\s*\([^)]*\)\s*=>\s*([A-Za-z_\\][A-Za-z0-9_\\]*)::make\s*\(/s', $expr, $m) === 1) {
-            $short = $this->shortClass($m[1]);
-            if (str_ends_with($short, 'Resource')) {
-                return sprintf('Array<%s>', $short);
-            }
-        }
-
-        // SomeResource::collection(...)
-        if (preg_match('/([A-Za-z_\\][A-Za-z0-9_\\]*)::collection\s*\(/', $expr, $m) === 1) {
-            $short = $this->shortClass($m[1]);
-            $res = $this->normalizeResourceShort($short);
-
-            return sprintf('Array<%s>', $res);
-        }
-
-        // new SomeCollection(...) or new SomeResource(...)
-        if (preg_match('/new\s+([A-Za-z_\\][A-Za-z0-9_\\]*)\s*\(/', $expr, $m) === 1) {
-            $short = $this->shortClass($m[1]);
-            if (str_ends_with($short, 'Collection')) {
-                $base = mb_substr($short, 0, -10);
-
-                return sprintf('Array<%sResource>', $base);
-            }
-
-            if (str_ends_with($short, 'Resource')) {
-                return $short;
-            }
-        }
-
-        // SomeResource::make(...)
-        if (preg_match('/([A-Za-z_\\][A-Za-z0-9_\\]*)::make\s*\(/', $expr, $m) === 1) {
-            $short = $this->shortClass($m[1]);
-            if (str_ends_with($short, 'Resource')) {
-                return $short;
+        if (preg_match('/new\s+([A-Za-z_\\\\][A-Za-z0-9_\\\\]*)\s*\(/', $expr, $m) === 1) {
+            $type = $this->resolveResourceFactoryType($m[1], false);
+            if ($type !== null) {
+                return $type;
             }
         }
 
@@ -209,9 +222,42 @@ final readonly class JsonResourceTransformer implements Transformer
             return 'Array<unknown>';
         }
 
-        // map->relation shorthand without explicit resource creation => Array<unknown>
-        if (preg_match('/->map->\s*[A-Za-z_]\w*\s*\(/', $expr) === 1) {
-            return 'Array<unknown>';
+        return null;
+    }
+
+    private function wrapMappedType(string $innerType, bool $flatMap): string
+    {
+        if ($flatMap) {
+            $unwrapped = $this->unwrapArrayType($innerType);
+
+            return sprintf('Array<%s>', $unwrapped ?? $innerType);
+        }
+
+        return sprintf('Array<%s>', $innerType);
+    }
+
+    private function unwrapArrayType(string $type): ?string
+    {
+        if (preg_match('/^Array<(.+)>$/', $type, $m) === 1) {
+            return $m[1];
+        }
+
+        return null;
+    }
+
+    private function resolveResourceFactoryType(string $class, bool $collectionFactory): ?string
+    {
+        $short = $this->shortClass($class);
+
+        if (str_ends_with($short, 'Collection')) {
+            $base = mb_substr($short, 0, -10);
+            $resource = $base.'Resource';
+
+            return sprintf('Array<%s>', $resource);
+        }
+
+        if (str_ends_with($short, 'Resource')) {
+            return $collectionFactory ? sprintf('Array<%s>', $short) : $short;
         }
 
         return null;
@@ -223,21 +269,6 @@ final readonly class JsonResourceTransformer implements Transformer
         $last = end($parts);
 
         return $last !== false ? $last : $fqn;
-    }
-
-    private function normalizeResourceShort(string $short): string
-    {
-        if (str_ends_with($short, 'Resource')) {
-            return $short;
-        }
-
-        if (str_ends_with($short, 'Collection')) {
-            $base = mb_substr($short, 0, -10);
-
-            return $base.'Resource';
-        }
-
-        return $short;
     }
 
     private function extractReturnedArrayContent(string $methodBody): ?string

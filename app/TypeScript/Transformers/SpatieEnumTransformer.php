@@ -34,10 +34,10 @@ final readonly class SpatieEnumTransformer implements Transformer
         $map = $enum::toArray();
 
         $options = array_map(
-            fn ($value, string $label): string => sprintf(
-                "%s = '%s'",
+            fn (int|string $value, string $label): string => sprintf(
+                '%s = %s',
                 $label,
-                (string) $value
+                $this->valueToLiteral($value)
             ),
             array_keys($map),
             array_values($map)
@@ -57,7 +57,7 @@ final readonly class SpatieEnumTransformer implements Transformer
         $enum = $class->getName();
 
         $options = array_map(
-            fn (int|string $enum): string => sprintf("'%s'", $enum),
+            $this->valueToLiteral(...),
             array_keys($enum::toArray())
         );
 
@@ -66,5 +66,16 @@ final readonly class SpatieEnumTransformer implements Transformer
             $name,
             implode(' | ', $options)
         );
+    }
+
+    private function valueToLiteral(int|string $value): string
+    {
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        $escaped = str_replace("'", "\\'", $value);
+
+        return sprintf("'%s'", $escaped);
     }
 }

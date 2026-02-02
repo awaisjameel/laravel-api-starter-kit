@@ -15,8 +15,12 @@ final class UpdateUser
      */
     public function execute(User $user, array $attributes): User
     {
-        if (array_key_exists('password', $attributes) && $attributes['password'] !== null) {
-            $attributes['password'] = Hash::make($attributes['password']);
+        if (array_key_exists('password', $attributes)) {
+            if ($attributes['password'] === null) {
+                unset($attributes['password']);
+            } else {
+                $attributes['password'] = Hash::make($attributes['password']);
+            }
         }
 
         if (array_key_exists('password_confirmation', $attributes)) {

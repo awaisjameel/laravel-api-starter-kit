@@ -4,13 +4,11 @@ declare(strict_types=1);
 
 namespace App\TypeScript\Transformers;
 
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rules\Enum as LaravelEnumRule;
 use phpDocumentor\Reflection\DocBlockFactory;
 use phpDocumentor\Reflection\Type;
-use phpDocumentor\Reflection\Types\Compound;
-use phpDocumentor\Reflection\Types\Null_;
-use phpDocumentor\Reflection\Types\Nullable;
 use ReflectionClass;
 use ReflectionObject;
 use Spatie\Enum\Laravel\Rules\EnumRule as SpatieEnumRule;
@@ -182,55 +180,86 @@ final readonly class FormRequestTransformer implements Transformer
         MissingSymbolsCollection $missingSymbols
     ): array {
         $properties = [];
+        $propertyNames = [];
 
         foreach ($ruleDefinitions as $field => $definition) {
             $docType = $docTypes[$field] ?? null;
             $docTypeScript = $docType ? $this->typeToTypeScript($docType, $missingSymbols) : null;
+            if ($docType !== null && ($docTypeScript === null || str_contains($docTypeScript, 'any') || str_contains($docTypeScript, 'unknown'))) {
+                $enumDocTs = $this->resolveEnumFromDocType($docType, $missingSymbols);
+                if ($enumDocTs !== null) {
+                    $docTypeScript = $enumDocTs;
+                }
+            }
+
+            $ruleEnumType = $this->enumTypeFromRules($definition['tokens'], $missingSymbols);
             $ruleTypeScript = $this->inferTypeFromRules(
                 $definition['tokens'],
                 $definition['arrayItemTokens'] ?? null,
-                $missingSymbols
+                $missingSymbols,
+                $ruleEnumType
             );
 
-            $typeScript = $docTypeScript ?? $ruleTypeScript;
-            if ($docTypeScript !== null && $ruleTypeScript !== null) {
-                $isSimpleDoc = in_array($docTypeScript, ['string', 'number', 'boolean', 'any', 'unknown'], true);
-                $isSpecificRule = str_contains($ruleTypeScript, "'")
-                    || str_starts_with($ruleTypeScript, 'Array<')
-                    || str_starts_with($ruleTypeScript, 'Record<')
-                    || str_starts_with($ruleTypeScript, '{%')
-                    || ! in_array($ruleTypeScript, ['string', 'number', 'boolean', 'any', 'unknown'], true);
-
-                $typeScript = ($isSimpleDoc && $isSpecificRule) ? $ruleTypeScript : $docTypeScript;
+            $typeScript = $ruleTypeScript ?? $docTypeScript;
+            if ($ruleEnumType !== null) {
+                $typeScript = $ruleEnumType;
             }
 
             $typeScript ??= 'unknown';
-            $isNullable = $definition['nullable'] || ($docType !== null && $this->isNullableType($docType));
-            $isOptional = $this->isOptional($definition['required'], $definition['tokens'], $isNullable);
+            $isNullable = $definition['nullable'];
+            if (! $isNullable) {
+                $typeScript = $this->stripNullFromUnion($typeScript);
+            }
 
-            $properties[] = [
+            $isOptional = $this->isOptional($definition['required'], $definition['tokens']);
+
+            $property = [
                 'name' => $field,
                 'type' => $this->applyNullability($typeScript, $isNullable),
                 'optional' => $isOptional,
             ];
-        }
+            $properties[] = $property;
+            $propertyNames[$field] = true;
 
-        foreach ($docTypes as $field => $docType) {
-            if (array_key_exists($field, $ruleDefinitions)) {
-                continue;
+            if ($this->hasConfirmedRule($definition['tokens'])) {
+                $confirmation = $field.'_confirmation';
+                if (! array_key_exists($confirmation, $ruleDefinitions) && ! array_key_exists($confirmation, $propertyNames)) {
+                    $properties[] = [
+                        'name' => $confirmation,
+                        'type' => $property['type'],
+                        'optional' => $property['optional'],
+                    ];
+                    $propertyNames[$confirmation] = true;
+                }
             }
-
-            $typeScript = $this->typeToTypeScript($docType, $missingSymbols);
-            $isNullable = $this->isNullableType($docType);
-
-            $properties[] = [
-                'name' => $field,
-                'type' => $this->applyNullability($typeScript, $isNullable),
-                'optional' => true,
-            ];
         }
 
         return $properties;
+    }
+
+    private function resolveEnumFromDocType(Type $type, MissingSymbolsCollection $missingSymbols): ?string
+    {
+        try {
+            $raw = (string) $type;
+        } catch (Throwable) {
+            return null;
+        }
+
+        $nullable = str_contains($raw, 'null');
+        if (preg_match_all('/\b([A-Za-z_]\w*)\b/', $raw, $m) !== 1) {
+            return null;
+        }
+
+        foreach ($m[1] as $short) {
+            $fqcn = 'App\\Enums\\'.$short;
+            if (class_exists($fqcn)) {
+                $missingSymbols->add($fqcn);
+
+                return $nullable ? ($short.' | null') : $short;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -358,13 +387,9 @@ final readonly class FormRequestTransformer implements Transformer
     /**
      * @param  array<int, string|object>  $tokens
      */
-    private function isOptional(bool $required, array $tokens, bool $nullable): bool
+    private function isOptional(bool $required, array $tokens): bool
     {
         if (in_array('sometimes', $this->ruleNames($tokens), true)) {
-            return true;
-        }
-
-        if ($nullable && $this->config->shouldConsiderNullAsOptional()) {
             return true;
         }
 
@@ -393,13 +418,25 @@ final readonly class FormRequestTransformer implements Transformer
     /**
      * @param  array<int, string|object>  $tokens
      */
+    private function hasConfirmedRule(array $tokens): bool
+    {
+        return in_array('confirmed', $this->ruleNames($tokens), true);
+    }
+
+    /**
+     * @param  array<int, string|object>  $tokens
+     */
     private function inferTypeFromRules(
         array $tokens,
         ?array $arrayItemTokens,
-        MissingSymbolsCollection $missingSymbols
+        MissingSymbolsCollection $missingSymbols,
+        ?string $enumType
     ): ?string {
-        $enumType = $this->enumTypeFromRules($tokens, $missingSymbols);
+        if ($enumType !== null) {
+            return $enumType;
+        }
 
+        $enumType = $this->enumTypeFromRules($tokens, $missingSymbols);
         if ($enumType !== null) {
             return $enumType;
         }
@@ -415,7 +452,7 @@ final readonly class FormRequestTransformer implements Transformer
 
         if ($isArray) {
             $itemType = $arrayItemTokens
-                ? $this->inferTypeFromRules($arrayItemTokens, null, $missingSymbols)
+                ? $this->inferTypeFromRules($arrayItemTokens, null, $missingSymbols, null)
                 : null;
 
             return sprintf('Array<%s>', $itemType ?? 'unknown');
@@ -456,7 +493,7 @@ final readonly class FormRequestTransformer implements Transformer
 
     private function applyNullability(string $type, bool $nullable): string
     {
-        if (! $nullable || $this->config->shouldConsiderNullAsOptional()) {
+        if (! $nullable) {
             return $type;
         }
 
@@ -467,23 +504,20 @@ final readonly class FormRequestTransformer implements Transformer
         return $type.' | null';
     }
 
-    private function isNullableType(Type $type): bool
+    private function stripNullFromUnion(string $type): string
     {
-        if ($type instanceof Null_ || $type instanceof Nullable) {
-            return true;
+        if (! str_contains($type, '|')) {
+            return $type;
         }
 
-        if (! $type instanceof Compound) {
-            return false;
+        $parts = array_map(trim(...), explode('|', $type));
+        $parts = array_filter($parts, static fn (string $part): bool => $part !== '' && $part !== 'null');
+
+        if ($parts === []) {
+            return 'unknown';
         }
 
-        foreach ($type as $inner) {
-            if ($this->isNullableType($inner)) {
-                return true;
-            }
-        }
-
-        return false;
+        return implode(' | ', array_values($parts));
     }
 
     /**
@@ -501,7 +535,9 @@ final readonly class FormRequestTransformer implements Transformer
             }
 
             if ($token instanceof SpatieEnumRule) {
-                $enum = $this->readRuleProperty($token, 'enum');
+                $enum = $this->readRuleProperty($token, 'enum')
+                    ?? $this->readRuleProperty($token, 'enumClass')
+                    ?? $this->readRuleProperty($token, 'type');
 
                 if (is_string($enum) && $enum !== '') {
                     return $missingSymbols->add(mb_ltrim($enum, '\\'));
@@ -629,14 +665,46 @@ final readonly class FormRequestTransformer implements Transformer
 
     private function readRuleProperty(object $rule, string $property): mixed
     {
-        $reflection = new ReflectionObject($rule);
+        // 1) Try bound closure to access protected property safely (no setAccessible)
+        try {
+            $getter = Closure::bind(static fn (string $prop) => property_exists($this, $prop) ? $this->{$prop} : null, $rule, $rule::class);
 
-        if (! $reflection->hasProperty($property)) {
-            return null;
+            $val = $getter($property);
+            if ($val !== null) {
+                return $val;
+            }
+        } catch (Throwable) {
+            // ignore and try next strategies
         }
 
-        $prop = $reflection->getProperty($property);
+        // 2) Fallback: cast to array and locate mangled key (\0*\0prop or \0Class\0prop)
+        try {
+            $arr = (array) $rule;
+            foreach ($arr as $k => $v) {
+                if (! is_string($k)) {
+                    continue;
+                }
 
-        return $prop->getValue($rule);
+                if (str_ends_with($k, "\0{$property}") || $k === $property) {
+                    return $v;
+                }
+            }
+        } catch (Throwable) {
+            // ignore and try reflection
+        }
+
+        // 3) Last resort: reflection (will work for public props)
+        try {
+            $reflection = new ReflectionObject($rule);
+            if ($reflection->hasProperty($property)) {
+                $prop = $reflection->getProperty($property);
+
+                return $prop->getValue($rule);
+            }
+        } catch (Throwable) {
+            // give up
+        }
+
+        return null;
     }
 }
