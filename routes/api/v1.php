@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use App\Http\Controllers\Api\V1\Admin\UserController as AdminUserController;
 use App\Http\Controllers\Api\V1\AuthController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,4 +25,15 @@ Route::middleware('throttle:auth')->group(function (): void {
 Route::middleware(['auth:sanctum', 'throttle:authenticated'])->group(function (): void {
     Route::post('logout', [AuthController::class, 'logout'])->name('api.v1.logout');
     Route::get('me', [AuthController::class, 'me'])->name('api.v1.me');
+});
+
+// Admin routes (RBAC enforced via 'admin' middleware)
+Route::prefix('admin')->middleware(['auth:sanctum', 'throttle:authenticated', 'admin'])->group(function (): void {
+    Route::apiResource('users', AdminUserController::class)->names([
+        'index' => 'api.v1.admin.users.index',
+        'store' => 'api.v1.admin.users.store',
+        'show' => 'api.v1.admin.users.show',
+        'update' => 'api.v1.admin.users.update',
+        'destroy' => 'api.v1.admin.users.destroy',
+    ]);
 });

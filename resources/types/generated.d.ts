@@ -10,6 +10,41 @@ export type RegisterRequest = {
     email: string;
     password: string;
 };
+export type StoreUserRequest = {
+    name: string;
+    email: string;
+    role: any;
+    password: string;
+    password_confirmation?: string;
+};
+export type UpdateUserRequest = {
+    name?: string | null;
+    email?: string | null;
+    role?: any | null;
+    password?: string | null;
+    password_confirmation?: string | null;
+};
+export type UserCollection =
+    | Array<UserResource>
+    | {
+          data: Array<UserResource>;
+          links: {
+              first?: string;
+              last?: string;
+              prev?: string | null;
+              next?: string | null;
+          };
+          meta: {
+              current_page: number;
+              from?: number | null;
+              last_page: number;
+              path: string;
+              per_page: number;
+              to?: number | null;
+              total: number;
+          };
+      };
+export type UserCollectionResponse = ApiResponse<UserCollection>;
 export type UserData = {
     id: number;
     created_at: string;
